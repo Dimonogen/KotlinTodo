@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Assertions.*
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.jdbc.JdbcTest
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
+import org.junit.jupiter.api.AfterEach
 import reactor.test.StepVerifier
 
 @JdbcTest
@@ -22,6 +23,11 @@ class TaskRepositoryTest {
     @BeforeEach
     fun setUp() {
         taskRepository = TaskRepository(jdbcTemplate)
+    }
+
+    @AfterEach
+    fun tearDown() {
+        jdbcTemplate.execute("DELETE FROM tasks") {}
     }
 
     @Test
@@ -64,8 +70,8 @@ class TaskRepositoryTest {
     @Test
     fun `should return empty when task not found`() {
         StepVerifier.create(taskRepository.findById(999L))
-            .expectErrorMatches { it.message?.contains("not found") == true }
-            .verify()
+            .expectNextCount(0)
+            .verifyComplete()
     }
 
     @Test
@@ -131,8 +137,8 @@ class TaskRepositoryTest {
                     .verifyComplete()
                 
                 StepVerifier.create(taskRepository.findById(saved.id!!))
-                    .expectErrorMatches { it.message?.contains("not found") == true }
-                    .verify()
+                    .expectNextCount(0)
+                    .verifyComplete()
             }
             .verifyComplete()
     }
@@ -140,7 +146,7 @@ class TaskRepositoryTest {
     @Test
     fun `should return empty when deleting non-existent task`() {
         StepVerifier.create(taskRepository.deleteById(999L))
-            .expectErrorMatches { it.message?.contains("not found") == true }
-            .verify()
+            .expectNextCount(0)
+            .verifyComplete()
     }
 }

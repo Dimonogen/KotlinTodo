@@ -38,9 +38,20 @@ dependencies {
     testImplementation("io.projectreactor:reactor-test")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test")
     testImplementation("org.mockito.kotlin:mockito-kotlin:5.2.1")
+    testImplementation("org.mockito:mockito-inline:5.2.0")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
 tasks.withType<Test> {
     useJUnitPlatform()
+    
+    jvmArgs = listOf(
+        "-Djdk.attach.allowAttachSelf=true",
+        "-XX:+AllowRedefinitionToAddDeleteMethods",
+        "-Dnet.bytebuddy.experimental=true"
+    )
+    
+    testLogging {
+        events("passed", "skipped", "failed")
+    }
 }

@@ -176,10 +176,7 @@ class TaskServiceTest {
 
     @Test
     fun `should delete task successfully`() {
-        val deletedTask = Task(id = 1L, title = "Task", description = null, status = TaskStatus.NEW)
-        
-        whenever(taskRepository.findById(eq(1L))).thenReturn(Mono.just(deletedTask))
-        whenever(taskRepository.deleteById(any())).thenReturn(Mono.empty())
+        whenever(taskRepository.deleteById(eq(1L))).thenReturn(Mono.empty())
 
         StepVerifier.create(taskService.deleteTask(1L))
             .verifyComplete()
