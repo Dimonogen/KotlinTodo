@@ -7,16 +7,18 @@ import com.example.todo.exception.ValidationException
 import com.example.todo.model.TaskStatus
 import com.example.todo.service.TaskService
 import org.springframework.http.HttpStatus
+import org.springframework.validation.annotation.Validated
 import org.springframework.web.bind.annotation.*
 import reactor.core.publisher.Mono
 
 @RestController
+@Validated
 @RequestMapping("/api/tasks")
 class TaskController(private val taskService: TaskService) {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    fun createTask(@RequestBody request: TaskRequest): Mono<*> = 
+    fun createTask(@RequestBody request: TaskRequest): Mono<com.example.todo.dto.TaskResponse> = 
         taskService.createTask(request)
 
     @GetMapping
@@ -30,14 +32,14 @@ class TaskController(private val taskService: TaskService) {
     }
 
     @GetMapping("/{id}")
-    fun getTaskById(@PathVariable id: Long): Mono<*> = 
+    fun getTaskById(@PathVariable id: Long): Mono<com.example.todo.dto.TaskResponse> = 
         taskService.getTaskById(id)
 
     @PatchMapping("/{id}/status")
     fun updateTaskStatus(
         @PathVariable id: Long,
         @RequestBody request: TaskStatusUpdateRequest
-    ): Mono<*> {
+    ): Mono<com.example.todo.dto.TaskResponse> {
         val status = tryOrNull { TaskStatus.valueOf(request.status.uppercase()) }
             ?: throw ValidationException("Invalid status value. Must be one of: NEW, IN_PROGRESS, DONE, CANCELLED")
         
@@ -46,7 +48,7 @@ class TaskController(private val taskService: TaskService) {
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    fun deleteTask(@PathVariable id: Long): Mono<*> = 
+    fun deleteTask(@PathVariable id: Long): Mono<Void> = 
         taskService.deleteTask(id)
 }
 

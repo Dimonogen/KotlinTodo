@@ -44,11 +44,15 @@ class TaskServiceImpl(private val taskRepository: TaskRepository) : TaskService 
     }
 
     override fun updateTaskStatus(id: Long, request: TaskStatusUpdateRequest): Mono<TaskResponse> {
-        return validateTitle(request.status)
-            .then(taskRepository.findById(id))
+        return taskRepository.findById(id)
             .switchIfEmpty(Mono.error(TaskNotFoundException(id)))
             .flatMap { task ->
-                val newStatus = TaskStatus.valueOf(request.status.uppercase())
+                val newStatus = try {
+                    TaskStatus.valueOf(request.status.uppercase())
+                } catch (e: IllegalArgumentException) {
+                    throw ValidationException("Invalid status value. Must be one of: NEW, IN_PROGRESS, DONE, CANCELLED")
+                }
+                
                 if (task.status == newStatus) {
                     Mono.just(task)
                 } else {
