@@ -1,6 +1,7 @@
 package com.example.todo.repository
 
 import com.example.todo.dto.PageRequest
+import com.example.todo.exception.TaskNotFoundException as RepositoryTaskNotFoundException
 import com.example.todo.model.Task
 import com.example.todo.model.TaskStatus
 import org.springframework.jdbc.core.RowMapper
@@ -25,44 +26,49 @@ class TaskRepository(private val jdbcTemplate: NamedParameterJdbcTemplate) {
     }
 
     fun save(task: Task): Mono<Task> {
-        val now = LocalDateTime.now()
         return if (task.id == null) {
-            createTask(task.copy(createdAt = now, updatedAt = now))
+            createTask(task)
         } else {
-            updateTask(task.copy(updatedAt = now))
+            updateTask(task)
         }
     }
 
     private fun createTask(task: Task): Mono<Task> {
         val now = LocalDateTime.now()
+        
         val insertSql = """
             INSERT INTO tasks (title, description, status, created_at, updated_at)
             VALUES (:title, :description, :status, :created_at, :updated_at)
         """.trimIndent()
         
-        val selectSql = """
-            SELECT id FROM tasks WHERE title = :title AND status = :status 
-            ORDER BY created_at DESC LIMIT 1
-        """.trimIndent()
-        
         return Mono.fromCallable {
-            jdbcTemplate.update(insertSql, MapSqlParameterSource().apply {
-                addValue("title", task.title)
-                addValue("description", task.description)
-                addValue("status", task.status.name)
-                addValue("created_at", now)
-                addValue("updated_at", now)
-            })
-            
-            jdbcTemplate.queryForObject(
-                selectSql, 
+            jdbcTemplate.update(
+                insertSql, 
                 MapSqlParameterSource().apply {
                     addValue("title", task.title)
+                    addValue("description", task.description)
                     addValue("status", task.status.name)
-                },
-                Long::class.java
-            ) ?: throw Exception("Failed to get generated ID")
-        }.map { id ->
+                    addValue("created_at", now)
+                    addValue("updated_at", now)
+                }
+            )
+        }.flatMap { rowCount: Int ->
+            val selectSql = """
+                SELECT id FROM tasks WHERE title = :title AND status = :status 
+                ORDER BY created_at DESC LIMIT 1
+            """.trimIndent()
+            
+            Mono.fromCallable {
+                jdbcTemplate.queryForObject(
+                    selectSql, 
+                    MapSqlParameterSource().apply {
+                        addValue("title", task.title)
+                        addValue("status", task.status.name)
+                    },
+                    Long::class.java
+                ) ?: throw RuntimeException("Failed to get generated ID")
+            }
+        }.map { id: Long ->
             task.copy(id = id, createdAt = now, updatedAt = now)
         }
     }
@@ -74,18 +80,20 @@ class TaskRepository(private val jdbcTemplate: NamedParameterJdbcTemplate) {
             WHERE id = :id
         """.trimIndent()
         
-        val params = MapSqlParameterSource().apply {
-            addValue("title", task.title)
-            addValue("description", task.description)
-            addValue("status", task.status.name)
-            addValue("updated_at", task.updatedAt)
-            addValue("id", task.id!!)
-        }
-        
         return Mono.fromCallable {
-            jdbcTemplate.update(sql, params)
-            task
-        }.switchIfEmpty(Mono.error(Exception("Failed to update task")))
+            jdbcTemplate.update(
+                sql, 
+                MapSqlParameterSource().apply {
+                    addValue("title", task.title)
+                    addValue("description", task.description)
+                    addValue("status", task.status.name)
+                    addValue("updated_at", task.updatedAt)
+                    addValue("id", task.id!!)
+                }
+            )
+        }.flatMap { rowCount: Int ->
+            if (rowCount > 0) Mono.just(task) else Mono.empty()
+        }
     }
 
     fun findById(id: Long): Mono<Task> {
@@ -95,94 +103,115 @@ class TaskRepository(private val jdbcTemplate: NamedParameterJdbcTemplate) {
         """.trimIndent()
         
         return Mono.fromCallable {
-            jdbcTemplate.queryForObject(sql, MapSqlParameterSource("id", id), rowMapper) 
-                ?: throw Exception("Task not found with id: $id")
-        }.onErrorResume(Exception::class.java) { _ -> Mono.empty() }
+            jdbcTemplate.queryForObject(
+                sql, 
+                MapSqlParameterSource("id", id), 
+                rowMapper
+            )
+        }.flatMap { task: Task? ->
+            if (task != null) Mono.just(task) else Mono.error(RepositoryTaskNotFoundException(id))
+        }
     }
 
     fun findAll(pageRequest: PageRequest, status: TaskStatus? = null): Mono<Pair<List<Task>, Long>> {
         val offset = pageRequest.offset()
         
-        return if (status != null) {
-            val countSql = "SELECT COUNT(*) FROM tasks WHERE status = :status"
-            val fetchSql = """
-                SELECT id, title, description, status, created_at, updated_at
-                FROM tasks WHERE status = :status ORDER BY created_at DESC LIMIT :size OFFSET :offset
-            """.trimIndent()
-            
-            Mono.fromCallable {
-                jdbcTemplate.queryForObject(countSql, MapSqlParameterSource("status", status.name), Long::class.java) 
-                    ?: 0L
+        if (status != null) {
+            return Mono.fromCallable {
+                jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM tasks WHERE status = :status", 
+                    MapSqlParameterSource("status", status.name), 
+                    Long::class.java
+                ) ?: 0L
             }.flatMap { count: Long ->
-                val tasks = jdbcTemplate.query(
-                    fetchSql,
-                    MapSqlParameterSource().apply {
-                        addValue("status", status.name)
-                        addValue("size", pageRequest.size)
-                        addValue("offset", offset)
-                    },
-                    rowMapper
-                )
-                Mono.just(Pair(tasks, count))
+                val fetchSql = """
+                    SELECT id, title, description, status, created_at, updated_at
+                    FROM tasks WHERE status = :status ORDER BY created_at DESC LIMIT :size OFFSET :offset
+                """.trimIndent()
+                
+                Mono.fromCallable {
+                    jdbcTemplate.query(
+                        fetchSql,
+                        MapSqlParameterSource().apply {
+                            addValue("status", status.name)
+                            addValue("size", pageRequest.size)
+                            addValue("offset", offset)
+                        },
+                        rowMapper
+                    )
+                }.map { tasks: List<Task> -> Pair(tasks, count) }
             }
         } else {
-            val countSql = "SELECT COUNT(*) FROM tasks"
-            val fetchSql = """
-                SELECT id, title, description, status, created_at, updated_at
-                FROM tasks ORDER BY created_at DESC LIMIT :size OFFSET :offset
-            """.trimIndent()
-            
-            Mono.fromCallable {
-                jdbcTemplate.queryForObject(countSql, MapSqlParameterSource(), Long::class.java) ?: 0L
+            return Mono.fromCallable {
+                jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM tasks", 
+                    MapSqlParameterSource(), 
+                    Long::class.java
+                ) ?: 0L
             }.flatMap { count: Long ->
-                val tasks = jdbcTemplate.query(
-                    fetchSql,
-                    MapSqlParameterSource().apply {
-                        addValue("size", pageRequest.size)
-                        addValue("offset", offset)
-                    },
-                    rowMapper
-                )
-                Mono.just(Pair(tasks, count))
+                val fetchSql = """
+                    SELECT id, title, description, status, created_at, updated_at
+                    FROM tasks ORDER BY created_at DESC LIMIT :size OFFSET :offset
+                """.trimIndent()
+                
+                Mono.fromCallable {
+                    jdbcTemplate.query(
+                        fetchSql,
+                        MapSqlParameterSource().apply {
+                            addValue("size", pageRequest.size)
+                            addValue("offset", offset)
+                        },
+                        rowMapper
+                    )
+                }.map { tasks: List<Task> -> Pair(tasks, count) }
             }
         }
     }
 
     fun updateStatus(id: Long, status: TaskStatus): Mono<Task> {
         val now = LocalDateTime.now()
-        val fetchSql = """
-            SELECT id, title, description, status, created_at, updated_at
-            FROM tasks WHERE id = :id
-        """.trimIndent()
-        
-        val updateSql = """
-            UPDATE tasks 
-            SET status = :status, updated_at = :updated_at
-            WHERE id = :id
-        """.trimIndent()
         
         return Mono.fromCallable {
-            jdbcTemplate.queryForObject(fetchSql, MapSqlParameterSource("id", id), rowMapper)
-                ?: throw Exception("Task not found with id: $id")
-        }.flatMap { task ->
-            val updatedTask = Task(
-                id = id,
-                title = task.title,
-                description = task.description,
-                status = status,
-                createdAt = task.createdAt,
-                updatedAt = now
-            )
+            jdbcTemplate.queryForObject(
+                """
+                    SELECT id, title, description, status, created_at, updated_at
+                    FROM tasks WHERE id = :id
+                """.trimIndent(), 
+                MapSqlParameterSource("id", id), 
+                rowMapper
+            ) ?: throw RepositoryTaskNotFoundException(id)
+        }.flatMap { task: Task ->
+            val updateSql = """
+                UPDATE tasks 
+                SET status = :status, updated_at = :updated_at
+                WHERE id = :id
+            """.trimIndent()
             
             Mono.fromCallable {
-                jdbcTemplate.update(updateSql, MapSqlParameterSource().apply {
-                    addValue("status", status.name)
-                    addValue("updated_at", now)
-                    addValue("id", id)
-                })
-                updatedTask
-            }.onErrorResume(Exception::class.java) { _ -> Mono.empty() }
-        }.onErrorResume(Exception::class.java) { _ -> Mono.empty() }
+                jdbcTemplate.update(
+                    updateSql,
+                    MapSqlParameterSource().apply {
+                        addValue("status", status.name)
+                        addValue("updated_at", now)
+                        addValue("id", id)
+                    }
+                )
+            }.flatMap { rowCount: Int ->
+                if (rowCount > 0) {
+                    val updatedTask = Task(
+                        id = id,
+                        title = task.title,
+                        description = task.description,
+                        status = status,
+                        createdAt = task.createdAt,
+                        updatedAt = now
+                    )
+                    Mono.just(updatedTask)
+                } else {
+                    Mono.empty()
+                }
+            }
+        }
     }
 
     fun deleteById(id: Long): Mono<Void> {
@@ -190,8 +219,9 @@ class TaskRepository(private val jdbcTemplate: NamedParameterJdbcTemplate) {
         
         return Mono.fromCallable {
             jdbcTemplate.update(sql, MapSqlParameterSource("id", id))
-        }.flatMap { rowCount ->
-            if (rowCount > 0) Mono.empty() else Mono.empty()
+        }.flatMap { rowCount: Int ->
+            if (rowCount > 0) Mono.empty() else Mono.error(RepositoryTaskNotFoundException(id))
         }
     }
+
 }

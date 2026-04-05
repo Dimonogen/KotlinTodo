@@ -2,8 +2,11 @@ package com.example.todo.exception
 
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.validation.FieldError
+import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import reactor.core.publisher.Mono
 import java.time.LocalDateTime
 
 @RestControllerAdvice
@@ -30,6 +33,22 @@ class TaskExceptionHandler {
                 status = HttpStatus.BAD_REQUEST.value(),
                 error = "Bad Request",
                 message = ex.message,
+                path = null
+            )
+        )
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException::class)
+    fun handleValidationErrors(ex: MethodArgumentNotValidException): ResponseEntity<ErrorResponse> {
+        val fieldErrors = ex.bindingResult.fieldErrors
+        val errorMessage = fieldErrors.joinToString(", ") { "${it.field}: ${it.defaultMessage}" }
+        
+        return ResponseEntity.badRequest().body(
+            ErrorResponse(
+                timestamp = LocalDateTime.now(),
+                status = HttpStatus.BAD_REQUEST.value(),
+                error = "Validation Failed",
+                message = errorMessage,
                 path = null
             )
         )

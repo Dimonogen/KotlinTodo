@@ -2,7 +2,7 @@ package com.example.todo.controller
 
 import com.example.todo.dto.PageRequest
 import com.example.todo.dto.TaskRequest
-import com.example.todo.dto.TaskStatusUpdateRequest
+import com.example.todo.dto.TaskResponse
 import com.example.todo.exception.ValidationException
 import com.example.todo.model.TaskStatus
 import com.example.todo.service.TaskService
@@ -23,14 +23,12 @@ class TaskControllerTest {
     private val taskController: TaskController = TaskController(taskService)
 
     @BeforeEach
-    fun setUp() {
-        // Setup before each test
-    }
+    fun setUp() {}
 
     @Test
     fun `should create task and return created status`() {
         val request = TaskRequest(title = "New Task", description = "Description")
-        val response = com.example.todo.dto.TaskResponse(
+        val response = TaskResponse(
             id = 1L, 
             title = "New Task", 
             description = "Description", 
@@ -43,17 +41,16 @@ class TaskControllerTest {
 
         StepVerifier.create(taskController.createTask(request))
             .assertNext { result ->
-                assertEquals(response.id, (result as com.example.todo.dto.TaskResponse).id)
+                assertEquals(response.id, (result as TaskResponse).id)
             }
             .verifyComplete()
     }
 
     @Test
     fun `should get tasks with pagination and filter`() {
-        
         whenever(taskService.getTasks(eq(0), eq(10), eq(TaskStatus.NEW)))
             .thenReturn(Mono.just(com.example.todo.dto.PageResponse.of(
-                listOf(com.example.todo.dto.TaskResponse(
+                listOf(TaskResponse(
                     id = 1L, 
                     title = "Task", 
                     description = null, 
@@ -90,7 +87,7 @@ class TaskControllerTest {
 
     @Test
     fun `should get task by id`() {
-        val response = com.example.todo.dto.TaskResponse(
+        val response = TaskResponse(
             id = 42L, 
             title = "Found Task", 
             description = null, 
@@ -103,7 +100,7 @@ class TaskControllerTest {
 
         StepVerifier.create(taskController.getTaskById(42L))
             .assertNext { result ->
-                val typedResult = result as com.example.todo.dto.TaskResponse
+                val typedResult = result as TaskResponse
                 assertEquals(42L, typedResult.id)
                 assertEquals("Found Task", typedResult.title)
             }
@@ -112,9 +109,9 @@ class TaskControllerTest {
 
     @Test
     fun `should update task status`() {
-        val request = TaskStatusUpdateRequest(status = "DONE")
+        val request = com.example.todo.dto.TaskStatusUpdateRequest(status = "DONE")
         
-        val updatedTask = com.example.todo.dto.TaskResponse(
+        val updatedTask = TaskResponse(
             id = 1L, 
             title = "Task", 
             description = null, 
@@ -127,7 +124,7 @@ class TaskControllerTest {
 
         StepVerifier.create(taskController.updateTaskStatus(1L, request))
             .assertNext { result ->
-                val typedResult = result as com.example.todo.dto.TaskResponse
+                val typedResult = result as TaskResponse
                 assertEquals(TaskStatus.DONE, typedResult.status)
             }
             .verifyComplete()
@@ -142,14 +139,12 @@ class TaskControllerTest {
     }
 
     @Test
-    fun `should handle invalid status update`() {
-        val request = TaskStatusUpdateRequest(status = "INVALID_STATUS")
-
+    fun `should handle invalid status value in getTasks`() {
         try {
-            taskController.updateTaskStatus(1L, request).block()
+            taskController.getTasks(0, 10, "INVALID_STATUS").block()
             assertEquals(false, true)
         } catch (e: Exception) {
-            // Expected - ValidationException or IllegalArgumentException
+            // Expected - TaskException or similar
         }
     }
 }

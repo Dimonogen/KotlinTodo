@@ -31,7 +31,7 @@ class TaskServiceTest {
     @Mock
     private lateinit var taskRepository: TaskRepository
 
-    private lateinit var taskService: TaskService
+    private lateinit var taskService: TaskServiceImpl
 
     @BeforeEach
     fun setUp() {
@@ -90,7 +90,7 @@ class TaskServiceTest {
 
     @Test
     fun `should fail to get task by id when not found`() {
-        whenever(taskRepository.findById(any())).thenReturn(Mono.empty())
+        whenever(taskRepository.findById(any())).thenReturn(Mono.error(TaskNotFoundException(999L)))
 
         StepVerifier.create(taskService.getTaskById(999L))
             .expectError(TaskNotFoundException::class.java)
@@ -150,7 +150,7 @@ class TaskServiceTest {
 
     @Test
     fun `should fail to update task status when not found`() {
-        whenever(taskRepository.findById(any())).thenReturn(Mono.empty())
+        whenever(taskRepository.findById(any())).thenReturn(Mono.error(TaskNotFoundException(999L)))
 
         val request = TaskStatusUpdateRequest(status = "DONE")
 
@@ -180,5 +180,14 @@ class TaskServiceTest {
 
         StepVerifier.create(taskService.deleteTask(1L))
             .verifyComplete()
+    }
+
+    @Test
+    fun `should fail to delete non-existent task`() {
+        whenever(taskRepository.deleteById(any())).thenReturn(Mono.error(TaskNotFoundException(999L)))
+
+        StepVerifier.create(taskService.deleteTask(999L))
+            .expectError(TaskNotFoundException::class.java)
+            .verify()
     }
 }

@@ -24,10 +24,24 @@ class TaskServiceImpl(private val taskRepository: TaskRepository) : TaskService 
             .switchIfEmpty(Mono.error(ValidationException("Failed to create task")))
     }
 
+    private fun validateTitle(title: String): Mono<Unit> {
+        val trimmed = title.trim()
+        
+        if (trimmed.isEmpty()) {
+            return Mono.error(ValidationException("Title cannot be empty"))
+        }
+        
+        if (trimmed.length < 3 || trimmed.length > 100) {
+            return Mono.error(ValidationException("Title length must be between 3 and 100 characters"))
+        }
+        
+        return Mono.empty()
+    }
+
     override fun getTaskById(id: Long): Mono<TaskResponse> {
         return taskRepository.findById(id)
             .map(TaskMapper::toResponse)
-            .switchIfEmpty(Mono.error(TaskNotFoundException(id)))
+            .switchIfEmpty(Mono.error(com.example.todo.exception.TaskNotFoundException(id)))
     }
 
     override fun getTasks(page: Int, size: Int, status: TaskStatus?): Mono<PageResponse<TaskResponse>> {
@@ -45,9 +59,8 @@ class TaskServiceImpl(private val taskRepository: TaskRepository) : TaskService 
 
     override fun updateTaskStatus(id: Long, request: TaskStatusUpdateRequest): Mono<TaskResponse> {
         return taskRepository.findById(id)
-            .switchIfEmpty(Mono.error(TaskNotFoundException(id)))
             .flatMap { task ->
-                val newStatus = try {
+                val newStatus: TaskStatus = try {
                     TaskStatus.valueOf(request.status.uppercase())
                 } catch (e: IllegalArgumentException) {
                     throw ValidationException("Invalid status value. Must be one of: NEW, IN_PROGRESS, DONE, CANCELLED")
@@ -57,7 +70,6 @@ class TaskServiceImpl(private val taskRepository: TaskRepository) : TaskService 
                     Mono.just(task)
                 } else {
                     taskRepository.updateStatus(id, newStatus)
-                        .switchIfEmpty(Mono.error(TaskNotFoundException(id)))
                 }
             }
             .map(TaskMapper::toResponse)
@@ -65,20 +77,5 @@ class TaskServiceImpl(private val taskRepository: TaskRepository) : TaskService 
 
     override fun deleteTask(id: Long): Mono<Void> {
         return taskRepository.deleteById(id)
-            .onErrorMap { TaskNotFoundException(id) }
-    }
-
-    private fun validateTitle(title: String): Mono<Unit> {
-        val trimmed = title.trim()
-        
-        if (trimmed.isEmpty()) {
-            return Mono.error(ValidationException("Title cannot be empty"))
-        }
-        
-        if (trimmed.length < 3 || trimmed.length > 100) {
-            return Mono.error(ValidationException("Title length must be between 3 and 100 characters"))
-        }
-        
-        return Mono.empty()
     }
 }

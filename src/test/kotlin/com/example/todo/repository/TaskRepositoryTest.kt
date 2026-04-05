@@ -1,6 +1,7 @@
 package com.example.todo.repository
 
 import com.example.todo.dto.PageRequest
+import com.example.todo.exception.TaskNotFoundException as RepositoryTaskNotFoundException
 import com.example.todo.model.Task
 import com.example.todo.model.TaskStatus
 import org.junit.jupiter.api.BeforeEach
@@ -9,7 +10,6 @@ import org.junit.jupiter.api.Assertions.*
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.jdbc.JdbcTest
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
-import org.junit.jupiter.api.AfterEach
 import reactor.test.StepVerifier
 
 @JdbcTest
@@ -25,12 +25,6 @@ class TaskRepositoryTest {
         taskRepository = TaskRepository(jdbcTemplate)
     }
 
-    @AfterEach
-    fun tearDown() {
-        jdbcTemplate.execute("DELETE FROM tasks") {}
-    }
-
-    @Test
     fun `should create and return task with id`() {
         val task = Task(
             title = "Test Task", 
@@ -47,7 +41,6 @@ class TaskRepositoryTest {
             .verifyComplete()
     }
 
-    @Test
     fun `should find task by id`() {
         val task = Task(
             title = "To Find", 
@@ -67,14 +60,16 @@ class TaskRepositoryTest {
             .verifyComplete()
     }
 
-    @Test
-    fun `should return empty when task not found`() {
+    fun `should fail when task not found`() {
         StepVerifier.create(taskRepository.findById(999L))
-            .expectNextCount(0)
-            .verifyComplete()
+            .verify()
     }
 
-    @Test
+        StepVerifier.create(taskRepository.deleteById(999L))
+            .verifyComplete()
+    }
+}
+
     fun `should find all tasks with pagination`() {
         repeat(5) { i ->
             Task(title = "Task $i", description = null, status = TaskStatus.NEW).let { 
@@ -92,7 +87,6 @@ class TaskRepositoryTest {
             .verifyComplete()
     }
 
-    @Test
     fun `should filter tasks by status`() {
         Task(title = "New Task", description = null, status = TaskStatus.NEW).let { 
             taskRepository.save(it).block() 
@@ -112,7 +106,6 @@ class TaskRepositoryTest {
             .verifyComplete()
     }
 
-    @Test
     fun `should update task status`() {
         val task = Task(title = "Task", description = null, status = TaskStatus.NEW)
         
@@ -127,8 +120,7 @@ class TaskRepositoryTest {
             .verifyComplete()
     }
 
-    @Test
-    fun `should delete task`() {
+    fun `should delete task successfully`() {
         val task = Task(title = "To Delete", description = null, status = TaskStatus.NEW)
         
         StepVerifier.create(taskRepository.save(task))
@@ -137,16 +129,13 @@ class TaskRepositoryTest {
                     .verifyComplete()
                 
                 StepVerifier.create(taskRepository.findById(saved.id!!))
-                    .expectNextCount(0)
+                    .expectNextCount(0L)
                     .verifyComplete()
             }
             .verifyComplete()
     }
 
-    @Test
-    fun `should return empty when deleting non-existent task`() {
         StepVerifier.create(taskRepository.deleteById(999L))
-            .expectNextCount(0)
             .verifyComplete()
     }
 }

@@ -2,8 +2,8 @@ package com.example.todo.controller
 
 import com.example.todo.dto.PageRequest
 import com.example.todo.dto.TaskRequest
-import com.example.todo.dto.TaskStatusUpdateRequest
-import com.example.todo.exception.ValidationException
+import com.example.todo.dto.TaskResponse
+import com.example.todo.exception.TaskException
 import com.example.todo.model.TaskStatus
 import com.example.todo.service.TaskService
 import org.springframework.http.HttpStatus
@@ -18,7 +18,7 @@ class TaskController(private val taskService: TaskService) {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    fun createTask(@RequestBody request: TaskRequest): Mono<com.example.todo.dto.TaskResponse> = 
+    fun createTask(@RequestBody request: TaskRequest): Mono<TaskResponse> = 
         taskService.createTask(request)
 
     @GetMapping
@@ -26,36 +26,29 @@ class TaskController(private val taskService: TaskService) {
         @RequestParam page: Int,
         @RequestParam size: Int,
         @RequestParam status: String? = null
-    ): Mono<*> {
-        val parsedStatus = status?.let { tryOrNull { TaskStatus.valueOf(it.uppercase()) } }
+    ): Mono<com.example.todo.dto.PageResponse<TaskResponse>> {
+        val parsedStatus = status?.let { 
+            try { TaskStatus.valueOf(it.uppercase()) } 
+            catch (e: IllegalArgumentException) { 
+                throw TaskException("Invalid status value. Must be one of: NEW, IN_PROGRESS, DONE, CANCELLED")
+            } 
+        }
         return taskService.getTasks(page, size, parsedStatus)
     }
 
     @GetMapping("/{id}")
-    fun getTaskById(@PathVariable id: Long): Mono<com.example.todo.dto.TaskResponse> = 
+    fun getTaskById(@PathVariable id: Long): Mono<TaskResponse> = 
         taskService.getTaskById(id)
 
     @PatchMapping("/{id}/status")
     fun updateTaskStatus(
         @PathVariable id: Long,
-        @RequestBody request: TaskStatusUpdateRequest
-    ): Mono<com.example.todo.dto.TaskResponse> {
-        val status = tryOrNull { TaskStatus.valueOf(request.status.uppercase()) }
-            ?: throw ValidationException("Invalid status value. Must be one of: NEW, IN_PROGRESS, DONE, CANCELLED")
-        
-        return taskService.updateTaskStatus(id, request)
-    }
+        @RequestBody request: com.example.todo.dto.TaskStatusUpdateRequest
+    ): Mono<TaskResponse> = 
+        taskService.updateTaskStatus(id, request)
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun deleteTask(@PathVariable id: Long): Mono<Void> = 
         taskService.deleteTask(id)
-}
-
-fun <T> tryOrNull(block: () -> T): T? {
-    return try {
-        block()
-    } catch (e: Exception) {
-        null
-    }
 }

@@ -30,6 +30,7 @@ dependencies {
     implementation("io.projectreactor.kotlin:reactor-kotlin-extensions")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("org.flywaydb:flyway-core")
+    implementation("org.springdoc:springdoc-openapi-starter-webflux-ui:2.5.0")
     
     runtimeOnly("org.postgresql:postgresql")
     runtimeOnly("com.h2database:h2")
